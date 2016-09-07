@@ -13,7 +13,7 @@ func NewKeyNonce(key, nonce []byte) *keyNonce {
 }
 
 type contextSecret struct {
-	secret  []byte
+	secret  interface{}
 	context []byte
 }
 

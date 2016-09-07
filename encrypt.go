@@ -1,14 +1,23 @@
 package webpush
 
 import (
+	"crypto/ecdsa"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
 )
 
-var savedKeys = make(map[string][]byte)
+var savedKeys = make(map[string]*ecdsa.PrivateKey)
 var keyLabels = make(map[string][]byte)
+
+func SaveKey(id string, key *ecdsa.PrivateKey) {
+	savedKeys[id] = key
+}
+func SaveKeyWithLabel(id string, key *ecdsa.PrivateKey, label []byte) {
+	savedKeys[id] = key
+	keyLabels[id] = append(label, '\x00')
+}
 
 const (
 	MODE_ENCRYPT = "encrypt"
@@ -43,7 +52,7 @@ func encrypt(buffer []byte, params map[string]interface{}) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func extractDH(keyId, dh string, mode string) (*contextSecret, error) {
+func extractDH(keyId string, dh string, mode string) (*contextSecret, error) {
 	if _, ok := savedKeys[keyId]; !ok {
 		return nil, errors.New(fmt.Sprintf("No known DH key for %s", keyId))
 	}
@@ -61,7 +70,7 @@ func extractDH(keyId, dh string, mode string) (*contextSecret, error) {
 
 	//switch mode {
 	//case MODE_ENCRYPT:
-	//	senderPubKey = key
+	//	senderPubKey = key.PublicKey
 	//	receiverPubKey = share
 	//case MODE_DECRYPT:
 	//	receiverPubKey = key
@@ -96,7 +105,7 @@ func deriveKeyAndNonce(params map[string]interface{}, mode string) (*keyNonce, e
 	if err != nil {
 		return nil, err
 	}
-	prk := HKDF_extract(salt, s.secret)
+	prk := HKDF_extract(salt, s.secret.([]byte))
 
 	var (
 		keyInfo   []byte
@@ -138,8 +147,8 @@ func extractSalt(salt string) ([]byte, error) {
 func extractSecretAndContext(params map[string]interface{}, mode string) (*contextSecret, error) {
 	cs := NewContextSecret()
 	if v, ok := params["key"]; ok {
-		cs.secret, _ = base64.StdEncoding.DecodeString(v.(string))
-		if len(cs.secret) != KEY_LENGTH {
+		cs.secret = v
+		if len(cs.secret.([]byte)) != KEY_LENGTH {
 			return nil, errors.New(fmt.Sprintf("An explicit key must be %d bytes", KEY_LENGTH))
 		}
 	} else if v, ok := params["dh"]; ok {
@@ -159,7 +168,7 @@ func extractSecretAndContext(params map[string]interface{}, mode string) (*conte
 		dec, _ := base64.StdEncoding.DecodeString(v.(string))
 		cs.secret = HKDF(
 			dec,
-			cs.secret,
+			cs.secret.([]byte),
 			info("auth", []byte{}),
 			SHA_256_LENGTH,
 		)
