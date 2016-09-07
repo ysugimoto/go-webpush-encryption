@@ -7,6 +7,10 @@ import (
 	"encoding/binary"
 )
 
+func HKDF(salt, ikm, info []byte, size int) {
+	return HKDF_expand(HKDF_extract(salt, ikm), info, size)
+}
+
 func HKDF_extract(key, input []byte) []byte {
 	h := hmac.New(sha256.New, key)
 	return h.Sum(input)
