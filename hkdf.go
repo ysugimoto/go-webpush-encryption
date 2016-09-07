@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 )
 
-func HKDF(salt, ikm, info []byte, size int) {
+func HKDF(salt, ikm, info []byte, size int) []byte {
 	return HKDF_expand(HKDF_extract(salt, ikm), info, size)
 }
 
@@ -29,7 +29,7 @@ func HKDF_expand(prk, ikm []byte, size int) []byte {
 		I = append(I, cBuf.Bytes()...)
 		T = append(T, I...)
 		T = HKDF_extract(prk, T)
-		out = append(out, T)
+		out = append(out, T...)
 	}
 
 	return out[:size]

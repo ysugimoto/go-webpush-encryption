@@ -8,6 +8,7 @@ import (
 )
 
 var savedKeys = make(map[string][]byte)
+var keyLabels = make(map[string][]byte)
 
 const (
 	MODE_ENCRYPT = "encrypt"
@@ -16,33 +17,78 @@ const (
 	KEY_LENGTH     = 16
 	NONCE_LENGTH   = 12
 	SHA_256_LENGTH = 32
+
+	PAD_SIZE = 2
 )
 
 func encrypt(buffer []byte, params map[string]interface{}) ([]byte, error) {
-	kn, err := deriveKeyAndNonce(params, MODE_ENCRYPT)
-	if err != nil {
-		return nil, err
-	}
+	//kn, err := deriveKeyAndNonce(params, MODE_ENCRYPT)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	rs, err := determineRecordSize(params)
-	if err != nil {
-		return nil, err
-	}
+	//rs, err := determineRecordSize(params)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	start := 0
-	result := []byte{}
-	padSize := PAD_SIZE
-	if v, ok := params["padSize"]; ok {
-		padSize = v.(int)
-	}
+	//start := 0
+	//result := []byte{}
+	//padSize := PAD_SIZE
+	//if v, ok := params["padSize"]; ok {
+	//	padSize = v.(int)
+	//}
+
+	// TODO
+	return []byte{}, nil
 }
 
-func deriveKeyAndNonce(params map[string]interface{}, mode int) (*keyNonce, error) {
+func extractDH(keyId, dh string, mode string) (*contextSecret, error) {
+	if _, ok := savedKeys[keyId]; !ok {
+		return nil, errors.New(fmt.Sprintf("No known DH key for %s", keyId))
+	}
+	if _, ok := keyLabels[keyId]; !ok {
+		return nil, errors.New(fmt.Sprintf("No known DH key label for %s", keyId))
+	}
+
+	//share, err := base64.StdEncoding.DecodeString(dh)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//key := savedKeys[keyId]
+	//var senderPubKey []byte
+	//var receiverPubKey []byte
+
+	//switch mode {
+	//case MODE_ENCRYPT:
+	//	senderPubKey = key
+	//	receiverPubKey = share
+	//case MODE_DECRYPT:
+	//	receiverPubKey = key
+	//	senderPubKey = share
+	//default:
+	//	return nil, errors.New(fmt.Sprintf("Unknown mode only %s and %s supported", MODE_ENCRYPT, MODE_DECRYPT))
+	//}
+
+	cs := NewContextSecret()
+	return cs, nil
+	// TODO
+	//return {
+	//  secret: key.computeSecret(share),
+	//  context: Buffer.concat([
+	//    keyLabels[keyid],
+	//    lengthPrefix(receiverPubKey),
+	//    lengthPrefix(senderPubKey)
+	//  ])
+	//};
+}
+
+func deriveKeyAndNonce(params map[string]interface{}, mode string) (*keyNonce, error) {
 	padSize := PAD_SIZE
 	if v, ok := params["padSize"]; ok {
 		padSize = v.(int)
 	}
-	salt, err := extractSalt(params["salt"])
+	salt, err := extractSalt(params["salt"].(string))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +111,7 @@ func deriveKeyAndNonce(params map[string]interface{}, mode int) (*keyNonce, erro
 		keyInfo = info("aesgcm", s.context)
 		nonceInfo = info("nonce", s.context)
 	default:
-		return nil, errors.New("Unable to set context for padSize " + params["padSize"])
+		return nil, errors.New(fmt.Sprintf("Unable to set context for padSize %d", params["padSize"]))
 	}
 
 	return NewKeyNonce(
@@ -75,7 +121,7 @@ func deriveKeyAndNonce(params map[string]interface{}, mode int) (*keyNonce, erro
 }
 
 func extractSalt(salt string) ([]byte, error) {
-	if salt == nil {
+	if salt == "" {
 		return nil, errors.New("A salt is required")
 	}
 
@@ -83,31 +129,36 @@ func extractSalt(salt string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.New("base644 decoding failed")
 	} else if len(dec) != KEY_LENGTH {
-		return nil, errors.New("The salt parameter must be " + KEY_LENGTH + " bytes")
+		return nil, errors.New(fmt.Sprintf("The salt parameter must be %d bytes", KEY_LENGTH))
 	}
 
 	return dec, nil
 }
 
-func extractSecretAndContext(params map[string]interface{}, mode int) (*contextSecret, error) {
+func extractSecretAndContext(params map[string]interface{}, mode string) (*contextSecret, error) {
 	cs := NewContextSecret()
 	if v, ok := params["key"]; ok {
-		cs.secret, _ = base64.StdEncoding.DecodeString(v)
+		cs.secret, _ = base64.StdEncoding.DecodeString(v.(string))
 		if len(cs.secret) != KEY_LENGTH {
-			return nil, errors.New("An explicit key must be " + KEY_LENGTH + " bytes")
+			return nil, errors.New(fmt.Sprintf("An explicit key must be %d bytes", KEY_LENGTH))
 		}
 	} else if v, ok := params["dh"]; ok {
-		cs = extractDH(params["keyid"].(string), params["dh"].([]byte), mode)
+		var err error
+		cs, err = extractDH(params["keyid"].(string), v.(string), mode)
+		if err != nil {
+			return nil, err
+		}
 	} else if v, ok := params["keyid"]; ok {
-		cs.secret = savedKeys[params["keyid"].(string)]
+		cs.secret = savedKeys[v.(string)]
 	}
 
 	if cs.secret == nil {
 		return nil, errors.New("Unable to determine key")
 	}
 	if v, ok := params["authSecret"]; ok {
+		dec, _ := base64.StdEncoding.DecodeString(v.(string))
 		cs.secret = HKDF(
-			base64.StdEncoding.DecodeString(v.(string)),
+			dec,
 			cs.secret,
 			info("auth", []byte{}),
 			SHA_256_LENGTH,
@@ -119,12 +170,12 @@ func extractSecretAndContext(params map[string]interface{}, mode int) (*contextS
 
 func info(base string, context []byte) (ret []byte) {
 	ret = append(ret, []byte("Content-Encoding: "+base)...)
-	ret = append(ret, byte("\x00"))
+	ret = append(ret, '\x00')
 	ret = append(ret, context...)
 	return
 }
 
-func determineRecordSize(params map[string]interface{}) (int, err) {
+func determineRecordSize(params map[string]interface{}) (int, error) {
 	rs, err := strconv.Atoi(params["rs"].(string))
 	if err != nil {
 		return 4096, nil
@@ -137,5 +188,5 @@ func determineRecordSize(params map[string]interface{}) (int, err) {
 		return 0, errors.New(fmt.Sprintf("The rs parameter has to be greater than %d", padSize))
 	}
 
-	return rs
+	return rs, nil
 }

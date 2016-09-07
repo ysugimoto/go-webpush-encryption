@@ -18,7 +18,7 @@ type contextSecret struct {
 }
 
 func NewContextSecret() *contextSecret {
-	return &NewContextSecret{
+	return &contextSecret{
 		secret:  nil,
 		context: []byte{},
 	}
