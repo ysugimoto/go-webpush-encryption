@@ -1,10 +1,16 @@
 package webpush
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -14,15 +20,15 @@ var keyLabels = make(map[string][]byte)
 func SaveKey(id string, key *ecdsa.PrivateKey) {
 	savedKeys[id] = key
 }
-func SaveKeyWithLabel(id string, key *ecdsa.PrivateKey, label []byte) {
-	savedKeys[id] = key
+func SaveLabel(id string, label []byte) {
 	keyLabels[id] = append(label, '\x00')
 }
 
 const (
 	MODE_ENCRYPT = "encrypt"
-	MODE_DECRYPT = "decrpyt"
+	MODE_DECRYPT = "decrypt"
 
+	TAG_LENGTH     = 16
 	KEY_LENGTH     = 16
 	NONCE_LENGTH   = 12
 	SHA_256_LENGTH = 32
@@ -30,26 +36,143 @@ const (
 	PAD_SIZE = 2
 )
 
+func decrypt(buffer []byte, params map[string]interface{}) ([]byte, error) {
+	kn, err := deriveKeyAndNonce(params, MODE_DECRYPT)
+	if err != nil {
+		return nil, err
+	}
+
+	rs, err := determineRecordSize(params)
+	if err != nil {
+		return nil, err
+	}
+
+	start := 0
+	result := []byte{}
+
+	for index := 0; start < len(buffer); index++ {
+		end := start + rs + TAG_LENGTH
+		if end == len(buffer) {
+			return nil, errors.New("Truncated payload")
+		}
+
+		end = int(math.Min(float64(end), float64(len(buffer))))
+		if end-start <= TAG_LENGTH {
+			return nil, errors.New(fmt.Sprintf("Invalid block: too small at %d", index))
+		}
+
+		block, err := decryptRecord(kn, index, buffer[start:end], params["padSize"].(int))
+		if err != nil {
+			panic(err)
+		}
+		result = append(result, block...)
+		start = end
+	}
+
+	return result, nil
+}
+
+func decryptRecord(key *keyNonce, counter int, buffer []byte, padSize int) ([]byte, error) {
+	//nonce := generateNonce(key.nonce, counter)
+	//block, err := aes.NewCipher(key.key)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//gcm, err := cipher.NewGCMWithNonceSize(block, len(nonce))
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if padSize == 0 {
+	//	padSize = PAD_SIZE
+	//}
+
+	return nil, nil
+	//ret, err := gcm.Open(nil, nonce, buffer, padding)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	//return ret[(padSize + pad):], nil
+}
+
 func encrypt(buffer []byte, params map[string]interface{}) ([]byte, error) {
-	//kn, err := deriveKeyAndNonce(params, MODE_ENCRYPT)
-	//if err != nil {
-	//	return nil, err
-	//}
+	kn, err := deriveKeyAndNonce(params, MODE_ENCRYPT)
+	if err != nil {
+		return nil, err
+	}
 
-	//rs, err := determineRecordSize(params)
-	//if err != nil {
-	//	return nil, err
-	//}
+	rs, err := determineRecordSize(params)
+	if err != nil {
+		return nil, err
+	}
 
-	//start := 0
-	//result := []byte{}
-	//padSize := PAD_SIZE
-	//if v, ok := params["padSize"]; ok {
-	//	padSize = v.(int)
-	//}
+	start := 0
+	result := []byte{}
+	padSize := PAD_SIZE
+	if v, ok := params["padSize"]; ok {
+		padSize = v.(int)
+	}
+	pad := 0
+	if v, ok := params["pad"]; ok {
+		pad = v.(int)
+	}
 
-	// TODO
-	return []byte{}, nil
+	for index, _ := range buffer {
+		a := 1<<uint8(padSize*8) - 1
+		recordPad := int(math.Min(float64(a), math.Min(float64(rs-padSize-1), float64(pad))))
+
+		pad -= recordPad
+
+		end := math.Min(float64(start+rs-padSize-recordPad), float64(len(buffer)))
+		block, err := encryptRecord(kn, index, buffer[start:int(end)], recordPad, padSize)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, block...)
+		start += rs - padSize - recordPad
+	}
+
+	if pad > 0 {
+		return nil, errors.New(fmt.Sprintf("Unable to pad by requested amount, %d remaining", pad))
+	}
+
+	return result, nil
+}
+
+func encryptRecord(key *keyNonce, counter int, buffer []byte, pad, padSize int) ([]byte, error) {
+	nonce := generateNonce(key.nonce, counter)
+	block, err := aes.NewCipher(key.key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCMWithNonceSize(block, len(nonce))
+	if err != nil {
+		return nil, err
+	}
+	if padSize == 0 {
+		padSize = PAD_SIZE
+	}
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, pad)
+	padding := buf.Bytes()
+	for len(padding) < pad+padSize {
+		padding = append(padding, 0)
+	}
+
+	return gcm.Seal(nil, nonce, buffer, padding), nil
+
+}
+
+func generateNonce(base []byte, counter int) []byte {
+	nonce := base[len(base)-6:]
+	buf := bytes.NewReader(nonce)
+	var m int
+	binary.Read(buf, binary.BigEndian, &m)
+	x := ((m^counter)&0xffffff + (((m/0x1000000)^(counter/0x1000000))&0xffffff)*0x1000000)
+	b := new(bytes.Buffer)
+	binary.Write(b, binary.BigEndian, x)
+	return append(base[:len(base)-6], b.Bytes()...)
+
 }
 
 func extractDH(keyId string, dh string, mode string) (*contextSecret, error) {
@@ -60,36 +183,41 @@ func extractDH(keyId string, dh string, mode string) (*contextSecret, error) {
 		return nil, errors.New(fmt.Sprintf("No known DH key label for %s", keyId))
 	}
 
-	//share, err := base64.StdEncoding.DecodeString(dh)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//key := savedKeys[keyId]
-	//var senderPubKey []byte
-	//var receiverPubKey []byte
+	share, err := base64.StdEncoding.DecodeString(dh)
+	if err != nil {
+		return nil, err
+	}
+	key := savedKeys[keyId]
+	curve := elliptic.P256()
+	var senderPubKey []byte
+	var receiverPubKey []byte
 
-	//switch mode {
-	//case MODE_ENCRYPT:
-	//	senderPubKey = key.PublicKey
-	//	receiverPubKey = share
-	//case MODE_DECRYPT:
-	//	receiverPubKey = key
-	//	senderPubKey = share
-	//default:
-	//	return nil, errors.New(fmt.Sprintf("Unknown mode only %s and %s supported", MODE_ENCRYPT, MODE_DECRYPT))
-	//}
+	switch mode {
+	case MODE_ENCRYPT:
+		senderPubKey = elliptic.Marshal(curve, key.PublicKey.X, key.PublicKey.Y)
+		receiverPubKey = share
+	case MODE_DECRYPT:
+		senderPubKey = share
+		receiverPubKey = elliptic.Marshal(curve, key.PublicKey.X, key.PublicKey.Y)
+	default:
+		return nil, errors.New(fmt.Sprintf("Unknown mode only %s and %s supported", MODE_ENCRYPT, MODE_DECRYPT))
+	}
+
+	x, y := elliptic.Unmarshal(curve, share)
 
 	cs := NewContextSecret()
+	cs.secret, _ = curve.ScalarMult(x, y, key.D.Bytes())
+	cs.context = append(cs.context, keyLabels[keyId]...)
+	cs.context = append(cs.context, lengthPrefix(receiverPubKey)...)
+	cs.context = append(cs.context, lengthPrefix(senderPubKey)...)
+
 	return cs, nil
-	// TODO
-	//return {
-	//  secret: key.computeSecret(share),
-	//  context: Buffer.concat([
-	//    keyLabels[keyid],
-	//    lengthPrefix(receiverPubKey),
-	//    lengthPrefix(senderPubKey)
-	//  ])
-	//};
+}
+
+func lengthPrefix(buffer []byte) []byte {
+	b := new(bytes.Buffer)
+	binary.Write(b, binary.BigEndian, len(buffer))
+	return append(b.Bytes(), buffer...)
 }
 
 func deriveKeyAndNonce(params map[string]interface{}, mode string) (*keyNonce, error) {
@@ -123,10 +251,10 @@ func deriveKeyAndNonce(params map[string]interface{}, mode string) (*keyNonce, e
 		return nil, errors.New(fmt.Sprintf("Unable to set context for padSize %d", params["padSize"]))
 	}
 
-	return NewKeyNonce(
-		HKDF_expand(prk, keyInfo, KEY_LENGTH),
-		HKDF_expand(prk, nonceInfo, NONCE_LENGTH),
-	), nil
+	key := HKDF_expand(prk, keyInfo, KEY_LENGTH)
+	nonce := HKDF_expand(prk, nonceInfo, NONCE_LENGTH)
+
+	return &keyNonce{key: key, nonce: nonce}, nil
 }
 
 func extractSalt(salt string) ([]byte, error) {
@@ -158,7 +286,8 @@ func extractSecretAndContext(params map[string]interface{}, mode string) (*conte
 			return nil, err
 		}
 	} else if v, ok := params["keyid"]; ok {
-		cs.secret = savedKeys[v.(string)]
+		key := savedKeys[v.(string)]
+		cs.secret = elliptic.Marshal(elliptic.P256(), key.PublicKey.X, key.PublicKey.Y)
 	}
 
 	if cs.secret == nil {
@@ -166,12 +295,7 @@ func extractSecretAndContext(params map[string]interface{}, mode string) (*conte
 	}
 	if v, ok := params["authSecret"]; ok {
 		dec, _ := base64.StdEncoding.DecodeString(v.(string))
-		cs.secret = HKDF(
-			dec,
-			cs.secret.([]byte),
-			info("auth", []byte{}),
-			SHA_256_LENGTH,
-		)
+		cs.secret = HKDF(dec, cs.secret.([]byte), info("auth", []byte{}), SHA_256_LENGTH)
 	}
 
 	return cs, nil
