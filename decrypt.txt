@@ -1,0 +1,66 @@
+package webpush
+
+import (
+	"errors"
+	"fmt"
+	"math"
+)
+
+func decrypt(buffer []byte, params map[string]interface{}) ([]byte, error) {
+	kn, err := deriveKeyAndNonce(params, MODE_DECRYPT)
+	if err != nil {
+		return nil, err
+	}
+
+	rs, err := determineRecordSize(params)
+	if err != nil {
+		return nil, err
+	}
+
+	start := 0
+	result := []byte{}
+
+	for index := 0; start < len(buffer); index++ {
+		end := start + rs + TAG_LENGTH
+		if end == len(buffer) {
+			return nil, errors.New("Truncated payload")
+		}
+
+		end = int(math.Min(float64(end), float64(len(buffer))))
+		if end-start <= TAG_LENGTH {
+			return nil, errors.New(fmt.Sprintf("Invalid block: too small at %d", index))
+		}
+
+		block, err := decryptRecord(kn, index, buffer[start:end], params["padSize"].(int))
+		if err != nil {
+			panic(err)
+		}
+		result = append(result, block...)
+		start = end
+	}
+
+	return result, nil
+}
+
+func decryptRecord(key *keyNonce, counter int, buffer []byte, padSize int) ([]byte, error) {
+	//nonce := generateNonce(key.nonce, counter)
+	//block, err := aes.NewCipher(key.key)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//gcm, err := cipher.NewGCMWithNonceSize(block, len(nonce))
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if padSize == 0 {
+	//	padSize = PAD_SIZE
+	//}
+
+	return nil, nil
+	//ret, err := gcm.Open(nil, nonce, buffer, padding)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	//return ret[(padSize + pad):], nil
+}
