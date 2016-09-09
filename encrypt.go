@@ -1,79 +1,65 @@
 package webpush
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"encoding/binary"
-	"errors"
-	"fmt"
-	"math"
 )
 
-func encrypt(buffer, key salt []byte, options EncryptOption) ([]byte, error) {
-	kn, err := deriveKeyNonce(salt, options, MODE_ENCRYPT)
-	if err != nil {
-		return nil, err
-	}
-
-	rs, err := determineRecordSize(params)
-	if err != nil {
-		return nil, err
-	}
-
-	start := 0
-	result := []byte{}
-	padSize := PAD_SIZE
-	if v, ok := params["padSize"]; ok {
-		padSize = v.(int)
-	}
-	pad := 0
-	if v, ok := params["pad"]; ok {
-		pad = v.(int)
-	}
-
-	for index, _ := range buffer {
-		a := 1<<uint8(padSize*8) - 1
-		recordPad := int(math.Min(float64(a), math.Min(float64(rs-padSize-1), float64(pad))))
-
-		pad -= recordPad
-
-		end := math.Min(float64(start+rs-padSize-recordPad), float64(len(buffer)))
-		block, err := encryptRecord(kn, index, buffer[start:int(end)], recordPad, padSize)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, block...)
-		start += rs - padSize - recordPad
-	}
-
-	if pad > 0 {
-		return nil, errors.New(fmt.Sprintf("Unable to pad by requested amount, %d remaining", pad))
-	}
-
-	return result, nil
+type Encrypter struct {
+	c       cipher.AEAD
+	padding []byte
 }
 
-func encryptRecord(key *keyNonce, counter int, buffer []byte, pad, padSize int) ([]byte, error) {
-	nonce := generateNonce(key.nonce, counter)
-	block, err := aes.NewCipher(key.key)
+func NewEncrypter(key []byte) *Encrypter {
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCMWithNonceSize(block, len(nonce))
-	if err != nil {
-		return nil, err
-	}
-	if padSize == 0 {
-		padSize = PAD_SIZE
-	}
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, pad)
-	padding := buf.Bytes()
-	for len(padding) < pad+padSize {
-		padding = append(padding, 0)
+		panic(err)
 	}
 
-	return gcm.Seal(nil, nonce, buffer, padding), nil
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err)
+	}
 
+	return &Encrypter{
+		c:       gcm,
+		padding: []byte{NULLBYTE, NULLBYTE},
+	}
+}
+
+func (e *Encrypter) encrypt(payload, nonce []byte) (encrypted []byte) {
+	start := 0
+	size := len(payload)
+
+	for i := 0; start < size; i++ {
+		if start+BLOCK_SIZE > size {
+			d := e.encryptRecord(payload[start:], nonce, i)
+			encrypted = append(encrypted, d...)
+			break
+		} else {
+			e := e.encryptRecord(payload[start:(start+BLOCK_SIZE)], nonce, i)
+			encrypted = append(encrypted, e...)
+		}
+		start += BLOCK_SIZE
+	}
+
+	return encrypted
+}
+
+func (e *Encrypter) encryptRecord(chunk, nonce []byte, counter int) []byte {
+	c := append(e.padding, chunk...)
+	n := e.generateNonce(nonce, uint(counter))
+
+	return e.c.Seal(nil, n, c, nil)
+}
+
+func (e *Encrypter) generateNonce(n []byte, c uint) (nonce []byte) {
+	pos := len(n) - 6
+
+	for i := pos; i < len(n); i++ {
+		b := uint(n[i]) ^ c
+		nonce = append(nonce, byte(b))
+	}
+
+	return append(n[:pos], nonce...)
 }

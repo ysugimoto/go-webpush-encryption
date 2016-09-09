@@ -1,0 +1,117 @@
+package webpush
+
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
+)
+
+type Encrypter struct {
+	c cipher.AEAD
+}
+
+func NewEncrypter(key []byte) *Encrypter {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Encrypter{
+		c: gcm,
+	}
+}
+
+
+
+func encrypt(payload, key, nonce []byte) (encrypted []byte) {
+	start := 0
+	size := len(payload)
+	for i := 0; start < size; i++ {
+		if start+BLOCK_SIZE > size {
+			e := encryptRecord(payload[start:], key, nonce, i)
+			encryptedData = append(encryptedData, e...)
+			break
+		} else {
+			e := encrypt(message[start:(start+BLOCK_SIZE)], hashInfoKey, hashInfoNonce, i)
+			encryptedData = append(encryptedData, e...)
+		}
+		start += BLOCK_SIZE
+	}
+}
+
+func encrypt(buffer, key salt []byte, options EncryptOption) ([]byte, error) {
+	kn, err := deriveKeyNonce(salt, options, MODE_ENCRYPT)
+	if err != nil {
+		return nil, err
+	}
+
+	rs, err := determineRecordSize(params)
+	if err != nil {
+		return nil, err
+	}
+
+	start := 0
+	result := []byte{}
+	padSize := PAD_SIZE
+	if v, ok := params["padSize"]; ok {
+		padSize = v.(int)
+	}
+	pad := 0
+	if v, ok := params["pad"]; ok {
+		pad = v.(int)
+	}
+
+	for index, _ := range buffer {
+		a := 1<<uint8(padSize*8) - 1
+		recordPad := int(math.Min(float64(a), math.Min(float64(rs-padSize-1), float64(pad))))
+
+		pad -= recordPad
+
+		end := math.Min(float64(start+rs-padSize-recordPad), float64(len(buffer)))
+		block, err := encryptRecord(kn, index, buffer[start:int(end)], recordPad, padSize)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, block...)
+		start += rs - padSize - recordPad
+	}
+
+	if pad > 0 {
+		return nil, errors.New(fmt.Sprintf("Unable to pad by requested amount, %d remaining", pad))
+	}
+
+	return result, nil
+}
+
+func encryptRecord(key *keyNonce, counter int, buffer []byte, pad, padSize int) ([]byte, error) {
+	nonce := generateNonce(key.nonce, counter)
+	block, err := aes.NewCipher(key.key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCMWithNonceSize(block, len(nonce))
+	if err != nil {
+		return nil, err
+	}
+	if padSize == 0 {
+		padSize = PAD_SIZE
+	}
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.BigEndian, pad)
+	padding := buf.Bytes()
+	for len(padding) < pad+padSize {
+		padding = append(padding, 0)
+	}
+
+	return gcm.Seal(nil, nonce, buffer, padding), nil
+
+}
