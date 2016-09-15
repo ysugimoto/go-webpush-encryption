@@ -5,9 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"time"
 )
 
@@ -62,33 +64,20 @@ func sendWebPush(ss PushSubscription) {
 	}
 
 	if ss.JWT != nil {
-		jwtHeader := NewJWTHeader()
-		now := time.Now().UnixNano() / int64(time.Millisecond)
-		jwtClaim := NewJWTClaim(ss.JWT.Audience, ss.JWT.Subject, now+12*60*60)
-		claim := generateJWTClaimString(jwtHeader, jwtClaim)
-
-		// VAPID
-		x, y, err := ecdsa.Sign(rand.Reader, keyManager.serverPrivateKey, []byte(claim))
-		if err != nil {
-			panic(err)
-		}
-		asn1 := elliptic.Marshal(Curve, x, y)
-		signature := make([]byte, VAPID_SIGNATURE_LENGTH)
-
-		l1 := int(asn1[3])
-		pos := 4 + l1 - 32
-		signature = append(signature, asn1[pos:(pos+32)]...)
-		pos += 33
-
-		l2 := int(asn1[pos])
-		pos += 1 + l2 - 32
-		signature = append(signature, asn1[pos:(pos+32)]...)
-
 		p256ecdsa := urlSafeBase64Encode(
 			elliptic.Marshal(Curve, keyManager.serverPublicKey.X, keyManager.serverPublicKey.Y),
 		)
 		request.appendHeader("Crypto-Key", ";p256ecdsa="+p256ecdsa)
-		request.setHeader("Authorization", fmt.Sprintf("WebPush %s.%s", claim, urlSafeBase64Encode(signature)))
+
+		// VAPID sign
+		jwtHeader := NewJWTHeader()
+		now := time.Now().UnixNano() / int64(time.Millisecond)
+		jwtClaim := NewJWTClaim(ss.JWT.Audience, ss.JWT.Subject, now+12*60*60)
+		claim := generateJWTClaimString(jwtHeader, jwtClaim)
+		request.setHeader(
+			"Authorization",
+			fmt.Sprintf("WebPush %s.%s", claim, urlSafeBase64Encode(signECDSASha256(claim))),
+		)
 	}
 
 	response, err := request.send()
@@ -97,6 +86,9 @@ func sendWebPush(ss PushSubscription) {
 	}
 	defer response.Body.Close()
 
+	fmt.Printf("Status %d\n", response.StatusCode)
+	buf, _ := ioutil.ReadAll(response.Body)
+	fmt.Println(string(buf))
 }
 
 func generateKeyContext(auth string) (ikm, context []byte) {
@@ -176,4 +168,31 @@ func encryptPayload(prk, context []byte, payload, ce string) []byte {
 
 	e := NewEncrypter(key)
 	return e.encrypt([]byte(payload), nonce)
+}
+
+func signECDSASha256(claim string) []byte {
+	hash := sha256.New()
+	hash.Write([]byte(claim))
+
+	privatekey := keyManager.serverPrivateKey
+	R, S, err := ecdsa.Sign(rand.Reader, privatekey, hash.Sum(nil))
+	if err != nil {
+		panic(err)
+	}
+
+	curveBits := privatekey.Curve.Params().BitSize
+	keyBytes := curveBits / 8
+	if curveBits&8 > 0 {
+		keyBytes += 1
+	}
+
+	RB := R.Bytes()
+	RBP := make([]byte, keyBytes)
+	copy(RBP[keyBytes-len(RB):], RB)
+
+	SB := S.Bytes()
+	SBP := make([]byte, keyBytes)
+	copy(SBP[keyBytes-len(SB):], SB)
+
+	return append(RBP, SBP...)
 }
