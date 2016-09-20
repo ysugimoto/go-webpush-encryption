@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -61,6 +62,11 @@ func init() {
 		serverKey = generateNewServerKey()
 	}
 
+	fmt.Printf(
+		"Server PublicKey: %s",
+		base64.StdEncoding.EncodeToString(elliptic.Marshal(Curve, serverKey.PublicKey.X, serverKey.PublicKey.Y)),
+	)
+
 	keyManager.setServerKey(serverKey)
 }
 
@@ -75,8 +81,9 @@ func importServerKeyFromFile() *ecdsa.PrivateKey {
 
 	return &ecdsa.PrivateKey{
 		PublicKey: ecdsa.PublicKey{
-			X: toBigInt(km.X),
-			Y: toBigInt(km.Y),
+			Curve: Curve,
+			X:     toBigInt(km.X),
+			Y:     toBigInt(km.Y),
 		},
 		D: toBigInt(km.D),
 	}
@@ -107,7 +114,7 @@ func generateNewServerKey() *ecdsa.PrivateKey {
 }
 
 func toBigInt(keyStr string) *big.Int {
-	dec, _ := urlSafeBase64Decode(keyStr)
+	dec, _ := base64.StdEncoding.DecodeString(keyStr)
 	bi := new(big.Int)
 	bi.SetBytes(dec)
 
@@ -115,11 +122,13 @@ func toBigInt(keyStr string) *big.Int {
 }
 
 func importUserPublicKey(pubKey string) (ecdsa.PublicKey, error) {
-	dec, _ := urlSafeBase64Decode(pubKey)
+	//dec, _ := urlSafeBase64Decode(pubKey)
+	dec, _ := base64.StdEncoding.DecodeString(pubKey)
 
 	X, Y := elliptic.Unmarshal(Curve, dec)
 	return ecdsa.PublicKey{
-		X: X,
-		Y: Y,
+		Curve: Curve,
+		X:     X,
+		Y:     Y,
 	}, nil
 }

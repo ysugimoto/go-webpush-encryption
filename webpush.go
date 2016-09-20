@@ -6,11 +6,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"time"
+
+	"github.com/k0kubun/pp"
 )
 
 const (
@@ -23,7 +26,7 @@ const (
 
 	GCM_KEY = "GCM Server Key Here"
 
-	SERVERKEY_PATH = "/WebPushServerKey.key"
+	SERVERKEY_PATH = "/Users/pc-0205-n2/WebPushServerKey.key"
 
 	AUTH_LENGTH            = 32
 	SALT_LENGTH            = 16
@@ -32,7 +35,7 @@ const (
 	VAPID_SIGNATURE_LENGTH = 64
 )
 
-func sendWebPush(ss PushSubscription) {
+func SendWebPush(ss PushSubscription) {
 	var encryptedData []byte
 
 	salt := make([]byte, SALT_LENGTH)
@@ -73,12 +76,20 @@ func sendWebPush(ss PushSubscription) {
 		jwtHeader := NewJWTHeader()
 		now := time.Now().UnixNano() / int64(time.Millisecond)
 		jwtClaim := NewJWTClaim(ss.JWT.Audience, ss.JWT.Subject, now+12*60*60)
-		claim := generateJWTClaimString(jwtHeader, jwtClaim)
+		claim := jwtClaim.GenerateClaimString(jwtHeader)
 		request.setHeader(
 			"Authorization",
-			fmt.Sprintf("WebPush %s.%s", claim, urlSafeBase64Encode(signECDSASha256(claim))),
+			fmt.Sprintf("WebPush %s", claim.Sign(keyManager.serverPrivateKey)),
 		)
+
+		//claim := GenerateJWTClaimString(jwtHeader, jwtClaim)
+		//request.setHeader(
+		//	"Authorization",
+		//	fmt.Sprintf("Bearer %s.%s", claim, urlSafeBase64Encode(signECDSASha256(claim))),
+		//)
 	}
+
+	pp.Print(request)
 
 	response, err := request.send()
 	if err != nil {
@@ -92,7 +103,8 @@ func sendWebPush(ss PushSubscription) {
 }
 
 func generateKeyContext(auth string) (ikm, context []byte) {
-	decAuth, err := urlSafeBase64Decode(auth)
+
+	decAuth, err := base64.StdEncoding.DecodeString(auth)
 	if err != nil {
 		panic(err)
 	}
@@ -105,11 +117,15 @@ func generateKeyContext(auth string) (ikm, context []byte) {
 	context = append(context, append([]byte("P-256"), NULLBYTE)...)
 
 	b := new(bytes.Buffer)
-	binary.Write(b, binary.BigEndian, len(receiverKey))
+	if err := binary.Write(b, binary.BigEndian, uint16(len(receiverKey))); err != nil {
+		panic(err)
+	}
 	context = append(context, append(b.Bytes(), receiverKey...)...)
 
 	b = new(bytes.Buffer)
-	binary.Write(b, binary.BigEndian, len(senderKey))
+	if err := binary.Write(b, binary.BigEndian, uint16(len(senderKey))); err != nil {
+		panic(err)
+	}
 	context = append(context, append(b.Bytes(), senderKey...)...)
 
 	return

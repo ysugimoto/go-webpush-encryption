@@ -37,8 +37,8 @@ func (e *Encrypter) encrypt(payload, nonce []byte) (encrypted []byte) {
 			encrypted = append(encrypted, d...)
 			break
 		} else {
-			e := e.encryptRecord(payload[start:(start+BLOCK_SIZE)], nonce, i)
-			encrypted = append(encrypted, e...)
+			d := e.encryptRecord(payload[start:(start+BLOCK_SIZE)], nonce, i)
+			encrypted = append(encrypted, d...)
 		}
 		start += BLOCK_SIZE
 	}
@@ -53,7 +53,8 @@ func (e *Encrypter) encryptRecord(chunk, nonce []byte, counter int) []byte {
 	return e.c.Seal(nil, n, c, nil)
 }
 
-func (e *Encrypter) generateNonce(n []byte, c uint) (nonce []byte) {
+func (e *Encrypter) generateNonce(n []byte, c uint) []byte {
+	nonce := []byte{}
 	pos := len(n) - 6
 
 	for i := pos; i < len(n); i++ {

@@ -1,10 +1,8 @@
 package webpush
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/binary"
 )
 
 func HKDF(salt, ikm, info []byte, size int) []byte {
@@ -17,20 +15,11 @@ func HKDF_extract(key, input []byte) []byte {
 }
 
 func HKDF_expand(prk, ikm []byte, size int) []byte {
-	out := []byte{}
-	T := []byte{}
-	counter := 0
-	for len(out) < size {
-		cBuf := new(bytes.Buffer)
-		counter++
-		binary.Write(cBuf, binary.BigEndian, counter)
-		I := []byte{}
-		I = append(I, ikm...)
-		I = append(I, cBuf.Bytes()...)
-		T = append(T, I...)
-		T = HKDF_extract(prk, T)
-		out = append(out, T...)
+	h := hmac.New(sha256.New, prk)
+	ikm = append(ikm, '\x01')
+	sum := h.Sum(ikm)
+	if size <= 32 {
+		return sum[:size]
 	}
-
-	return out[:size]
+	return sum
 }
