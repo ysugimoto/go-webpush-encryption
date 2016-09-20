@@ -1,0 +1,13 @@
+{
+    "name": "Push-Sample",
+    "short_name": "PS",
+    "icons": [{
+        "src": "http://localhost:8888/push.png",
+        "sizes": "230x230",
+        "type": "image/png"
+    }],
+    "start_url": "http://localhost:8888/",
+    "display": "standalone",
+    "gcm_sender_id": "463803978037"
+}
+
