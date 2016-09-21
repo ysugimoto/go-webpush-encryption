@@ -8,7 +8,7 @@ register.addEventListener("click", function() {
             console.log("Notification has already granted");
             push.disabled = true;
         } else {
-            Notification.checkPermission(function(perm) {
+            Notification.requestPermission(function(perm) {
                 if ( perm === "granted" ) {
                     push.disabled = true;
                 }
@@ -24,17 +24,34 @@ navigator.serviceWorker.ready.then(function(sw) {
 
 function sOK(ss) {
     if ( ! ss ) {
+        console.log("=====NG====");
         return sNG();
     }
 
     console.log(ss);
+    console.log("auth", abToBase64(ss.getKey("auth")));
+    console.log("key", abToBase64(ss.getKey("p256dh")));
+    console.log("endpoint", ss.endpoint);
 
     register.disabled = true;
     subscription = ss;
     registerNotification(ss);
 }
 
-function sNG() {
+function abToBase64(ab) {
+    var bin = "";
+    var bytes = new Uint8Array(ab);
+    var size = bytes.length;
+    for ( var i = 0; i < size; i++ ) {
+        bin += String.fromCharCode(bytes[i]);
+    }
+
+    console.log(window.btoa(bin))
+    return base64URLEncode(bin);
+}
+
+function sNG(err) {
+    console.log("subscription failed", err);
     register.disabled = true;
     subscription = null;
 }
@@ -53,9 +70,31 @@ push.addEventListener("click", function() {
     navigator.serviceWorker.ready.then(subscribe);
 });
 
+function base64URLEncode(buf) {
+    return window.btoa(buf)
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=+$/g, "");
+}
+
+function base64URLDecode(str) {
+    str += Array(5 - str.length % 4).join("=");
+    str = str.replace(/\-/g, "+")
+            .replace(/\_/g, "/");
+
+    return window.atob(str);
+}
+
 function subscribe(sw) {
+    var key = base64URLDecode("BPC-FCjm9OhqYqFCGzXCxm2KPStFcLDIz35jMCx5hbX6rlJZmAPALG1YcHDgKPMDZe2sGwxzMvh-VIcAeSZ6L2U");
+    var size = key.length;
+    var pubKey = new Uint8Array(size);
+    for ( var i = 0; i < size; i++ ) {
+        pubKey[i] = key.charCodeAt(i);
+    }
     sw.pushManager.subscribe({
-        userVisibleOnly: true
+        userVisibleOnly: true,
+        applicationServerKey: pubKey
     })
     .then(sOK, sNG);
 }

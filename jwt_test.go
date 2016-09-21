@@ -19,6 +19,12 @@ type serverKeyMap struct {
 
 const expect = "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL2ZjbS5nb29nbGVhcGlzLmNvbSIsInN1YiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODg4OCIsImV4cCI6MTAwMDAwfQ.qW1lQYtHjKqus1K43dgGfQU_op0wjOYrwRwpeoxelp4tD8y9YiLuRxVpdTqSShqLpZuNt9Z6aTOrHr2z8ZZDWA"
 
+func TestJWTHeaderString(t *testing.T) {
+	h := wp.NewJWTHeader()
+	b, _ := json.Marshal(h)
+	t.Error(wp.EurlSafeBase64Encode(b))
+}
+
 func TestJWTSigner(t *testing.T) {
 	buf, _ := ioutil.ReadFile(wp.SERVERKEY_PATH)
 

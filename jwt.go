@@ -45,11 +45,7 @@ func (s *JWTClaimString) Sign(pk *ecdsa.PrivateKey) string {
 		panic(err)
 	}
 
-	curveBits := pk.Curve.Params().BitSize
-	keyBytes := curveBits / 8
-	if curveBits&8 > 0 {
-		keyBytes += 1
-	}
+	keyBytes := 32
 
 	RB := R.Bytes()
 	RBP := make([]byte, keyBytes)
@@ -82,4 +78,14 @@ func (c *JWTClaim) GenerateClaimString(header *JWTHeader) *JWTClaimString {
 	return &JWTClaimString{
 		claim: fmt.Sprintf("%s.%s", urlSafeBase64Encode(jh), urlSafeBase64Encode(jc)),
 	}
+
+	// Testing JWT order for Chrome
+	//t := int64(time.Now().Unix() + 3600)
+	//h := urlSafeBase64Encode([]byte("{\"typ\":\"JWT\",\"alg\":\"ES256\"}"))
+	//b := urlSafeBase64Encode([]byte("{\"aud\":\"fcm.googleapis.cm\",\"exp\":" + fmt.Sprint(t) + ",\"sub\":\"http://localhost\"}"))
+	//h := base64.URLEncoding.EncodeToString([]byte("{\"typ\":\"JWT\",\"alg\":\"ES256\"}"))
+	//b := base64.URLEncoding.EncodeToString([]byte("{\"aud\":\"fcm.googleapis.cm\",\"sub\":\"http://localhost\",\"exp\":" + fmt.Sprint(t) + "}"))
+	//return &JWTClaimString{
+	//	claim: h + "." + b,
+	//}
 }

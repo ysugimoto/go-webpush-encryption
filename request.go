@@ -38,9 +38,9 @@ func (p *PushRequest) send() (*http.Response, error) {
 	var err error
 
 	if len(p.buffer) > 0 {
-		request, err = http.NewRequest("POST", p.url, nil)
-	} else {
 		request, err = http.NewRequest("POST", p.url, bytes.NewReader(p.buffer))
+	} else {
+		request, err = http.NewRequest("POST", p.url, nil)
 	}
 
 	if err != nil {

@@ -2,12 +2,11 @@ self.addEventListener("fetch", function(event) {
     console.log(event);
 });
 
-self.addEventListener("push", function(event) {
-    console.log(event);
-    event.waitUntil(
+self.addEventListener("push", function(evt) {
+    evt.waitUntil(
         self.registration.showNotification("Hello", {
             icon: "/push.png",
-            body: "HogeHoge",
+            body: evt.data.text(),
             tag: "Notification"
         })
     );

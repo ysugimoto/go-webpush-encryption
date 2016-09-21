@@ -63,8 +63,8 @@ func init() {
 	}
 
 	fmt.Printf(
-		"Server PublicKey: %s",
-		base64.StdEncoding.EncodeToString(elliptic.Marshal(Curve, serverKey.PublicKey.X, serverKey.PublicKey.Y)),
+		"Server PublicKey: %s\n",
+		urlSafeBase64Encode(elliptic.Marshal(Curve, serverKey.PublicKey.X, serverKey.PublicKey.Y)),
 	)
 
 	keyManager.setServerKey(serverKey)
@@ -122,8 +122,8 @@ func toBigInt(keyStr string) *big.Int {
 }
 
 func importUserPublicKey(pubKey string) (ecdsa.PublicKey, error) {
-	//dec, _ := urlSafeBase64Decode(pubKey)
-	dec, _ := base64.StdEncoding.DecodeString(pubKey)
+	dec, _ := urlSafeBase64Decode(pubKey)
+	//dec, _ := base64.StdEncoding.DecodeString(pubKey)
 
 	X, Y := elliptic.Unmarshal(Curve, dec)
 	return ecdsa.PublicKey{
