@@ -1,27 +1,28 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"fmt"
-	"github.com/k0kubun/pp"
+	wp "github.com/ysugimoto/go-webpush-encryption"
+	"net/url"
 )
 
-func main() {
-	p256 := elliptic.P256()
-	key, err := ecdsa.GenerateKey(p256, rand.Reader)
+const AUTH = "auth-secret"
+const KEY = "browser public key"
+const ENDPOINT = "endpoint"
+const SUBJECT = "your site URL"
 
-	if err != nil {
-		fmt.Println(err)
-		return
+func main() {
+	u, _ := url.Parse(ENDPOINT)
+	ss := wp.PushSubscription{
+		Keys: wp.PushSubscriptionKey{
+			P256DH: KEY,
+			Auth:   AUTH,
+		},
+		Payload:  "SampleSample",
+		Version:  1,
+		Endpoint: ENDPOINT,
+		JWT:      wp.NewJWTClaim(fmt.Sprintf("%s://%s", u.Scheme, u.Host), SUBJECT, 0),
 	}
 
-	pp.Print(key)
-	x, _ := p256.ScalarMult(key.PublicKey.X, key.PublicKey.Y, key.D.Bytes())
-
-	fmt.Printf("%x\n", x.Bytes())
-
-	k := elliptic.Marshal(p256, key.PublicKey.X, key.PublicKey.Y)
-	fmt.Printf("%s : %d\n", string(k), len(k))
+	wp.SendWebPush(ss)
 }
