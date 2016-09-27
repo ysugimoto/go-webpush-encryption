@@ -41,6 +41,19 @@ func (k *KeyManager) setSharedKey(key []byte) {
 	k.sharedSecretKey = key
 }
 
+func GetLocalKey() *ecdsa.PrivateKey {
+	return keyManager.localPrivateKey
+}
+func GetServerKey() *ecdsa.PrivateKey {
+	return keyManager.serverPrivateKey
+}
+func GetSharedKey() []byte {
+	return keyManager.sharedSecretKey
+}
+func GetUserKey() ecdsa.PublicKey {
+	return keyManager.userPublicKey
+}
+
 var keyManager *KeyManager
 var Curve = elliptic.P256()
 
@@ -123,7 +136,6 @@ func toBigInt(keyStr string) *big.Int {
 
 func importUserPublicKey(pubKey string) (ecdsa.PublicKey, error) {
 	dec, _ := urlSafeBase64Decode(pubKey)
-	//dec, _ := base64.StdEncoding.DecodeString(pubKey)
 
 	X, Y := elliptic.Unmarshal(Curve, dec)
 	return ecdsa.PublicKey{

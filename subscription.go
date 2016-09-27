@@ -9,7 +9,9 @@ type PushSubscription struct {
 	Payload  string              `json:"payload"`
 	Version  int                 `json:"int"`
 	Endpoint string              `json:"endpoint"`
-	JWT      *JWTClaim           `json:"jwt"`
+	Audience string              `json:"audience"`
+	Subject  string              `json:"subject"`
+	Expired  int64               `json:"expired"`
 }
 
 type PushSubscriptionKey struct {

@@ -9,9 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"time"
-
-	"github.com/k0kubun/pp"
 )
 
 const (
@@ -46,9 +43,10 @@ func SendWebPush(ss PushSubscription) {
 	}
 
 	request := NewPushRequest(ss.Endpoint, encryptedData)
-	if len(encryptedData) > 0 {
+	encryptedLength := len(encryptedData)
+	if encryptedLength > 0 {
 		request.setHeader("Content-Type", "application/octet-stream")
-		request.setHeader("Content-Length", fmt.Sprint(len(encryptedData)))
+		request.setHeader("Content-Length", fmt.Sprint(encryptedLength))
 
 		eck := urlSafeBase64Encode(
 			elliptic.Marshal(Curve, keyManager.localPublicKey.X, keyManager.localPublicKey.Y),
@@ -64,24 +62,19 @@ func SendWebPush(ss PushSubscription) {
 		request.setHeader("Authorization", fmt.Sprintf("key=%s", GCM_KEY))
 	}
 
-	if ss.JWT != nil {
+	if ss.Audience != "" {
 		p256ecdsa := urlSafeBase64Encode(
 			elliptic.Marshal(Curve, keyManager.serverPublicKey.X, keyManager.serverPublicKey.Y),
 		)
 		request.appendHeader("Crypto-Key", ";p256ecdsa="+p256ecdsa)
 
 		// VAPID sign
-		jwtHeader := NewJWTHeader()
-		now := time.Now().UnixNano() / int64(time.Millisecond)
-		jwtClaim := NewJWTClaim(ss.JWT.Audience, ss.JWT.Subject, now+12*60*60)
-		claim := jwtClaim.GenerateClaimString(jwtHeader)
+		vapid := NewVapid(keyManager.serverPrivateKey)
 		request.setHeader(
 			"Authorization",
-			fmt.Sprintf("WebPush %s", claim.Sign(keyManager.serverPrivateKey)),
+			fmt.Sprintf("WebPush %s", vapid.Token(ss.Audience, ss.Subject, ss.Expired)),
 		)
 	}
-
-	pp.Print(request)
 
 	response, err := request.send()
 	if err != nil {
@@ -95,7 +88,6 @@ func SendWebPush(ss PushSubscription) {
 }
 
 func generateKeyContext(auth string) (ikm, context []byte) {
-
 	decAuth, err := urlSafeBase64Decode(auth)
 	if err != nil {
 		fmt.Println(auth)

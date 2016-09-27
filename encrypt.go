@@ -54,7 +54,7 @@ func (e *Encrypter) encryptRecord(chunk, nonce []byte, counter int) []byte {
 }
 
 func (e *Encrypter) generateNonce(n []byte, c uint) []byte {
-	nonce := []byte{}
+	nonce := make([]byte, 6)
 	pos := len(n) - 6
 
 	for i := pos; i < len(n); i++ {
