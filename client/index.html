@@ -12,11 +12,11 @@
             .buttons .button { width: 100%; }
             .buttons .button:not(:last-child) { margin-bottom: 10px; }
             .send .button { margin-top: 10px; }
-            .input { min-height: 42px; font-size: 16px; }
+            .textarea { min-height: 74px; font-size: 16px; }
             .logs { height: 160px; overflow-y: auto; }
             .logs p { margin-bottom: 2px !important; }
-            .ok { color: #20bc56; }
-            .ng { color: #ff1f4b; }
+            .ok, .success { color: #20bc56; }
+            .ng, .error { color: #ff1f4b; }
             .subscriptions span { font-weight: bold; }
         </style>
     </head>
@@ -33,6 +33,7 @@
                     <div class="box status">
                         <h2 class="title is-4">Status</h2>
                         <p>ServiceWorker: <span class="ng">Not Ready</span></p>
+                        <p>ApplicationServerKey: <span class="ng">Not Ready</span></p>
                         <p>PushPermission: <span class="ng">Not Ready</span></p>
                         <p>PushSubscription: <span class="ng">Not Ready</span></p>
                     </div>
@@ -40,14 +41,14 @@
                 <div class="column">
                     <div class="box subscriptions">
                         <h3 class="title is-4">Subscriptions</h3>
-                        <p>Endpoint: <span></span></p>
-                        <p>p256dh: <span></span></p>
-                        <p>auth: <span></span></p>
+                        <p>Endpoint: <span>-</span></p>
+                        <p>p256dh: <span>-</span></p>
+                        <p>auth: <span>-</span></p>
                     </div>
                     <div class="box send">
                         <h3 class="title is-4">Push Message</h3>
                         <p class="control">
-                            <input id="js-PushMessage" class="input is-disabled" type="text" value="">
+                            <textarea id="js-PushMessage" class="textarea is-disabled"></textarea>
                             <button id="js-SendPush" class="button is-primary is-disabled" disabled>Send Push</button>
                         </p>
                     </div>
@@ -63,6 +64,19 @@
             </div>
         </div>
         <script src="app.js"></script>
+        <script>
+            WebPushSample.init({
+                server:        location.protocol + "//" + location.host,
+                register:      document.getElementById("js-ServiceWorker-Register"),
+                subscribe:     document.getElementById("js-PushSubscribe"),
+                unsubscribe:   document.getElementById("js-PushUnsubscribe"),
+                payload:       document.getElementById("js-PushMessage"),
+                send:          document.getElementById("js-SendPush"),
+                log:           document.getElementById("js-Logs"),
+                subscriptions: document.querySelectorAll(".subscriptions span"),
+                states:        document.querySelectorAll(".status span")
+            });
+        </script>
     </body>
 </html>
 
